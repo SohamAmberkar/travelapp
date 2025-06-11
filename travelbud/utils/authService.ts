@@ -1,10 +1,14 @@
 // utils/authService.ts
+import { Place } from "@/context/places-context";
 import api from "./api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export type User = {
   username: string;
   email: string;
+  preferences?: string[];           // <-- add this
+  profilePic?: string;              // <-- add this
+  favourites?: Place[]; 
 };
 
 // Axios error type for type guard

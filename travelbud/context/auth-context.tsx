@@ -1,4 +1,5 @@
 // contexts/AuthContext.tsx
+
 import React, {
   createContext,
   useContext,
@@ -32,6 +33,10 @@ type AuthProviderProps = {
   children: ReactNode;
 };
 
+/**
+ * The AuthProvider ONLY handles authentication state (user, loading).
+ * It does NOT manage user favourites. That should be done in UserContext.
+ */
 export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -43,6 +48,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         if (token) {
           const profile: User = await getProfile();
           setUser(profile);
+        } else {
+          setUser(null);
         }
       } catch (err) {
         setUser(null);

@@ -1,5 +1,12 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useContext, useEffect, useState } from "react";
+import {
+  updateProfile,
+  getFavourites,
+  addFavourite,
+  removeFavourite,
+  Place,
+} from "../utils/userService";
+import { useAuth } from "../context/auth-context";
 
 type UserContextType = {
   username: string;
@@ -10,57 +17,92 @@ type UserContextType = {
   setInterests: (interests: string[]) => void;
   darkMode: boolean;
   setDarkMode: (val: boolean) => void;
+  favourites: Place[];
+  addToFavourites: (place: Place) => void;
+  removeFromFavourites: (place_id: string) => void;
 };
 
-const DEFAULT_USER = {
-  username: "John Doe",
-  profilePic: "https://randomuser.me/api/portraits/men/32.jpg",
-  interests: [],
-  darkMode: false,
-};
-
-const UserContext = createContext<UserContextType>({
-  ...DEFAULT_USER,
+const DEFAULT_USER: UserContextType = {
+  username: "",
   setUsername: () => {},
+  profilePic: "",
   setProfilePic: () => {},
+  interests: [],
   setInterests: () => {},
+  darkMode: false,
   setDarkMode: () => {},
-});
+  favourites: [],
+  addToFavourites: () => {},
+  removeFromFavourites: () => {},
+};
 
-export function UserProvider({ children }: { children: React.ReactNode }) {
-  const [username, setUsernameState] = useState(DEFAULT_USER.username);
-  const [profilePic, setProfilePicState] = useState(DEFAULT_USER.profilePic);
+const UserContext = createContext<UserContextType>(DEFAULT_USER);
+
+export const UserProvider = ({ children }: { children: React.ReactNode }) => {
+  const [username, setUsernameState] = useState<string>(DEFAULT_USER.username);
+  const [profilePic, setProfilePicState] = useState<string>(
+    DEFAULT_USER.profilePic
+  );
   const [interests, setInterestsState] = useState<string[]>([]);
-  const [darkMode, setDarkModeState] = useState(DEFAULT_USER.darkMode);
+  const [darkMode, setDarkModeState] = useState<boolean>(DEFAULT_USER.darkMode);
+  const [favourites, setFavourites] = useState<Place[]>([]);
+
+  const { user } = useAuth();
 
   useEffect(() => {
-    (async () => {
-      const name = await AsyncStorage.getItem("username");
-      const pic = await AsyncStorage.getItem("profilePic");
-      const ints = await AsyncStorage.getItem("interests");
-      const dark = await AsyncStorage.getItem("darkMode");
-      if (name) setUsernameState(name);
-      if (pic) setProfilePicState(pic);
-      if (ints) setInterestsState(JSON.parse(ints));
-      if (dark) setDarkModeState(dark === "true");
-    })();
-  }, []);
+    if (user) {
+      setUsernameState(user.username || "");
+      setProfilePicState(user.profilePic || "");
+      setInterestsState(user.preferences || []);
+      // Always refetch favourites from backend on (re)login
+      (async () => {
+        try {
+          const favs = await getFavourites();
+          setFavourites(favs);
+        } catch {
+          setFavourites([]);
+        }
+      })();
+    } else {
+      setUsernameState("");
+      setProfilePicState("");
+      setInterestsState([]);
+      setFavourites([]);
+    }
+  }, [user]);
 
   const setUsername = (name: string) => {
     setUsernameState(name);
-    AsyncStorage.setItem("username", name);
+    updateProfile({ username: name });
   };
+
   const setProfilePic = (url: string) => {
     setProfilePicState(url);
-    AsyncStorage.setItem("profilePic", url);
+    updateProfile({ profilePic: url });
   };
+
   const setInterests = (ints: string[]) => {
     setInterestsState(ints);
-    AsyncStorage.setItem("interests", JSON.stringify(ints));
+    updateProfile({ interests: ints });
   };
+
   const setDarkMode = (val: boolean) => {
     setDarkModeState(val);
-    AsyncStorage.setItem("darkMode", val ? "true" : "false");
+  };
+
+  const addToFavourites = async (place: Place) => {
+    console.log(place);
+    await addFavourite(place);
+    setFavourites((prev) =>
+      prev.find((fav) => fav.place_id === place.place_id)
+        ? prev
+        : [...prev, place]
+    );
+  };
+
+  const removeFromFavourites = async (place_id: string) => {
+    await removeFavourite(place_id);
+    setFavourites((prev) => prev.filter((fav) => fav.place_id !== place_id));
   };
 
   return (
@@ -74,13 +116,14 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         setInterests,
         darkMode,
         setDarkMode,
+        favourites,
+        addToFavourites,
+        removeFromFavourites,
       }}
     >
       {children}
     </UserContext.Provider>
   );
-}
+};
 
-export function useUser() {
-  return useContext(UserContext);
-}
+export const useUser = () => useContext(UserContext);

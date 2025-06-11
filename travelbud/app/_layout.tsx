@@ -1,3 +1,4 @@
+// layout.tsx
 import React from "react";
 import {
   DarkTheme,
@@ -9,7 +10,6 @@ import { Stack, useRouter, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-
 import { PlacesProvider } from "../context/places-context";
 import { UserProvider, useUser } from "../context/user-context";
 import { AuthProvider, useAuth } from "../context/auth-context";
@@ -31,7 +31,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   React.useEffect(() => {
-    // If not loading, not authenticated, and not already on login/register, redirect to login
     if (
       !loading &&
       !user &&
@@ -40,7 +39,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     ) {
       router.replace("/login");
     }
-    // If authenticated and on login/register, redirect to home
     if (
       !loading &&
       user &&
@@ -50,12 +48,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     }
   }, [user, pathname, loading, router]);
 
-  // Loading splash
   if (loading) return null;
-
-  // Block rendering protected content when not authenticated and not on auth screens
   if (!user && pathname !== "/login" && pathname !== "/register") return null;
-
   return <>{children}</>;
 }
 
@@ -72,7 +66,6 @@ export default function RootLayout() {
         <UserProvider>
           <PlacesProvider>
             <ThemedApp>
-              {/* Stack and screens are children of AuthGate, so auth protection applies */}
               <AuthGate>
                 <Stack>
                   <Stack.Screen
