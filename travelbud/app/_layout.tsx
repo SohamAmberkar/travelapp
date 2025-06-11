@@ -1,3 +1,4 @@
+import React from "react";
 import {
   DarkTheme,
   DefaultTheme,
@@ -7,12 +8,12 @@ import { useFonts } from "expo-font";
 import { Stack, useRouter, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+
 import { PlacesProvider } from "../context/places-context";
 import { UserProvider, useUser } from "../context/user-context";
-import "./globals.css";
 import { AuthProvider, useAuth } from "../context/auth-context";
-import React from "react";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
+import "./globals.css";
 
 function ThemedApp({ children }: { children: React.ReactNode }) {
   const { darkMode } = useUser();
@@ -24,7 +25,7 @@ function ThemedApp({ children }: { children: React.ReactNode }) {
   );
 }
 
-function AuthGate() {
+function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -39,16 +40,23 @@ function AuthGate() {
     ) {
       router.replace("/login");
     }
-  }, [user, pathname, loading]);
+    // If authenticated and on login/register, redirect to home
+    if (
+      !loading &&
+      user &&
+      (pathname === "/login" || pathname === "/register")
+    ) {
+      router.replace("/");
+    }
+  }, [user, pathname, loading, router]);
 
-  // Show nothing (or a splash) while loading auth state
+  // Loading splash
   if (loading) return null;
 
-  // If not logged in and not on login/register, render nothing (blocks home/tabs)
+  // Block rendering protected content when not authenticated and not on auth screens
   if (!user && pathname !== "/login" && pathname !== "/register") return null;
 
-  // If logged in or on login/register, allow rendering
-  return null;
+  return <>{children}</>;
 }
 
 export default function RootLayout() {
@@ -64,16 +72,21 @@ export default function RootLayout() {
         <UserProvider>
           <PlacesProvider>
             <ThemedApp>
-              <Stack>
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                <Stack.Screen name="+not-found" />
-                <Stack.Screen name="login" options={{ headerShown: false }} />
-                <Stack.Screen
-                  name="register"
-                  options={{ headerShown: false }}
-                />
-              </Stack>
-              <AuthGate />
+              {/* Stack and screens are children of AuthGate, so auth protection applies */}
+              <AuthGate>
+                <Stack>
+                  <Stack.Screen
+                    name="(tabs)"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen name="+not-found" />
+                  <Stack.Screen name="login" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    name="register"
+                    options={{ headerShown: false }}
+                  />
+                </Stack>
+              </AuthGate>
             </ThemedApp>
           </PlacesProvider>
         </UserProvider>

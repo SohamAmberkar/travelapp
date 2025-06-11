@@ -1,15 +1,18 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+// contexts/AuthContext.tsx
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+} from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   getProfile,
   login as loginApi,
   logout as logoutApi,
+  User,
 } from "../utils/authService";
-
-type User = {
-  username: string;
-  email: string;
-};
 
 type AuthContextType = {
   user: User | null;
@@ -25,20 +28,23 @@ const AuthContext = createContext<AuthContextType>({
   loading: false,
 });
 
-export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+type AuthProviderProps = {
+  children: ReactNode;
+};
 
-  // On mount, check for token and fetch profile
+export const AuthProvider = ({ children }: AuthProviderProps) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const token = await AsyncStorage.getItem("token");
+        const token: string | null = await AsyncStorage.getItem("token");
         if (token) {
-          const profile = await getProfile();
+          const profile: User = await getProfile();
           setUser(profile);
         }
-      } catch {
+      } catch (err) {
         setUser(null);
       } finally {
         setLoading(false);
@@ -47,12 +53,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     checkAuth();
   }, []);
 
-  const login = async (email: string, password: string) => {
-    const user = await loginApi(email, password);
+  const login = async (email: string, password: string): Promise<void> => {
+    const user: User = await loginApi(email, password);
     setUser(user);
   };
 
-  const logout = async () => {
+  const logout = async (): Promise<void> => {
     await logoutApi();
     setUser(null);
   };
@@ -64,4 +70,4 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-export const useAuth = () => useContext(AuthContext);
+export const useAuth = (): AuthContextType => useContext(AuthContext);

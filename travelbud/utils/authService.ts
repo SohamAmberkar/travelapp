@@ -1,41 +1,83 @@
+// utils/authService.ts
 import api from "./api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-export const login = async (email: string, password: string) => {
+export type User = {
+  username: string;
+  email: string;
+};
+
+// Axios error type for type guard
+type AxiosError = {
+  response?: {
+    data?: {
+      error?: string;
+    };
+  };
+};
+
+export const login = async (
+  email: string,
+  password: string
+): Promise<User> => {
   try {
     const res = await api.post("/login", { email, password });
-    await AsyncStorage.setItem("token", res.data.token); // Store JWT
-    return res.data.user;
-  } catch (err: any) {
-    // Extract error message
-    if (err.response?.data?.error) throw err.response.data.error;
+    await AsyncStorage.setItem("token", res.data.token);
+    return res.data.user as User;
+  } catch (err: unknown) {
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "response" in err &&
+      typeof (err as AxiosError).response?.data?.error === "string"
+    ) {
+      throw (err as AxiosError).response!.data!.error!;
+    }
+    if (err instanceof Error) throw err.message;
     throw "Login failed";
   }
 };
 
-export const getProfile = async () => {
+export const getProfile = async (): Promise<User> => {
   try {
-    const res = await api.get("/profile"); // <-- Simplified, interceptor handles token
-    return res.data;
-  } catch (err: any) {
-    throw err.response?.data?.error || "Failed to fetch profile";
+    const res = await api.get("/profile");
+    return res.data as User;
+  } catch (err: unknown) {
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "response" in err &&
+      typeof (err as AxiosError).response?.data?.error === "string"
+    ) {
+      throw (err as AxiosError).response!.data!.error!;
+    }
+    if (err instanceof Error) throw err.message;
+    throw "Failed to fetch profile";
   }
 };
 
-
-export const register = async (username: string, email: string, password: string) => {
+export const register = async (
+  username: string,
+  email: string,
+  password: string
+): Promise<User> => {
   try {
     const res = await api.post("/register", { username, email, password });
-    return res.data;
-  } catch (err: any) {
-    if (err.response?.data?.error) throw err.response.data.error;
+    return res.data as User;
+  } catch (err: unknown) {
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "response" in err &&
+      typeof (err as AxiosError).response?.data?.error === "string"
+    ) {
+      throw (err as AxiosError).response!.data!.error!;
+    }
+    if (err instanceof Error) throw err.message;
     throw "Registration failed";
   }
 };
 
-
-export const logout = async () => {
+export const logout = async (): Promise<void> => {
   await AsyncStorage.removeItem("token");
 };
-
-
