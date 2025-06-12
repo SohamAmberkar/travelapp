@@ -89,7 +89,9 @@ export default function MapScreen() {
           <Marker
             key={place.place_id}
             coordinate={{
+              // @ts-ignore
               latitude: place.geometry.location.lat,
+              // @ts-ignore
               longitude: place.geometry.location.lng,
             }}
             title={place.name}
@@ -108,7 +110,9 @@ export default function MapScreen() {
           activeOpacity={0.85}
           onPress={() =>
             openDirections(
+              // @ts-ignore
               places[selected].geometry.location.lat,
+              // @ts-ignore
               places[selected].geometry.location.lng,
               places[selected].name
             )
@@ -165,7 +169,9 @@ export default function MapScreen() {
               onPress={() => {
                 setSelected(idx);
                 setRegion({
+                  // @ts-ignore
                   latitude: place.geometry.location.lat,
+                  // @ts-ignore
                   longitude: place.geometry.location.lng,
                   latitudeDelta: 0.02,
                   longitudeDelta: 0.02,
@@ -199,7 +205,9 @@ export default function MapScreen() {
                 className="flex-row items-center bg-blue-600 rounded-xl px-3 py-2 ml-2 shadow"
                 onPress={() =>
                   openDirections(
+                    // @ts-ignore
                     place.geometry.location.lat,
+                    // @ts-ignore
                     place.geometry.location.lng,
                     place.name
                   )
