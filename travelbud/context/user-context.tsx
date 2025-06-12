@@ -91,7 +91,7 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const addToFavourites = async (place: Place) => {
-    console.log(place);
+    //console.log(place);
     await addFavourite(place);
     setFavourites((prev) =>
       prev.find((fav) => fav.place_id === place.place_id)

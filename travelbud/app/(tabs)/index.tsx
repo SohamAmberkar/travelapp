@@ -1,61 +1,23 @@
-import {
-  FontAwesome5,
-  Ionicons,
-  MaterialCommunityIcons,
-  FontAwesome,
-} from "@expo/vector-icons";
-import axios from "axios";
-import * as Location from "expo-location";
-import { useRouter } from "expo-router";
-import React, { useEffect, useState, useCallback } from "react";
+import React from "react";
 import {
   ActivityIndicator,
   FlatList,
   Image,
-  Linking,
   Modal,
   Platform,
+  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
   View,
+  Linking,
   SafeAreaView,
-  Dimensions,
-  ScrollView,
 } from "react-native";
-import { useUser } from "@/context/user-context";
-
-const windowWidth = Dimensions.get("window").width;
-
-const CATEGORIES = [
-  {
-    label: "Gyms",
-    icon: <MaterialCommunityIcons name="dumbbell" size={22} color="#007f6d" />,
-    type: "gym",
-  },
-  {
-    label: "Cafes",
-    icon: <FontAwesome5 name="coffee" size={20} color="#865d36" />,
-    type: "cafe",
-  },
-  {
-    label: "Coworking",
-    icon: <FontAwesome5 name="laptop-code" size={20} color="#20509e" />,
-    type: "coworking_space",
-  },
-  {
-    label: "Parks",
-    icon: <Ionicons name="leaf" size={22} color="#24994e" />,
-    type: "park",
-  },
-  {
-    label: "Stores",
-    icon: (
-      <MaterialCommunityIcons name="storefront" size={22} color="#0063a6" />
-    ),
-    type: "store",
-  },
-];
+import { Ionicons, FontAwesome } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { usePlaces } from "../../context/places-context";
+import { useUser } from "../../context/user-context"; // Adjust path as needed
+import { PlacesProvider } from "../../context/places-context";
 
 const FALLBACK_IMAGE =
   "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/No_image_available.svg/480px-No_image_available.svg.png";
@@ -63,131 +25,35 @@ const FALLBACK_IMAGE =
 const getPhotoUrl = (photoReference: string, maxwidth = 400) =>
   `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${maxwidth}&photoreference=${photoReference}&key=${process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY}`;
 
-type Place = {
-  place_id: string;
-  name: string;
-  vicinity: string;
-  geometry: { location: { lat: number; lng: number } };
-  photos?: { photo_reference: string }[];
-  rating?: number;
-  user_ratings_total?: number;
-  opening_hours?: { open_now?: boolean };
-  types?: string[];
-  categoryLabel?: string;
-  categoryIcon?: React.ReactNode;
-};
-
 export default function HomeScreen() {
-  const {
-    username,
-    interests,
-    favourites,
-    addToFavourites,
-    removeFromFavourites,
-  } = useUser();
+  const [favsCollapsed, setFavsCollapsed] = React.useState(false);
 
-  const [allPlaces, setAllPlaces] = useState<Place[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [manualLocation, setManualLocation] = useState({
-    latitude: "",
-    longitude: "",
-  });
-  const [showLocationModal, setShowLocationModal] = useState(false);
-  const [currentCoords, setCurrentCoords] = useState<{
-    latitude: number;
-    longitude: number;
-  } | null>(null);
+  const insets = useSafeAreaInsets();
+  const { places: allPlaces, loading, error, setManualLocation } = usePlaces();
+  const { favourites, addToFavourites, removeFromFavourites, username } =
+    useUser();
 
-  // Details modal
-  const [detailsModal, setDetailsModal] = useState(false);
-  const [detailsLoading, setDetailsLoading] = useState(false);
-  const [details, setDetails] = useState<any>(null);
+  // Details modal state
+  const [detailsModal, setDetailsModal] = React.useState(false);
+  const [detailsLoading, setDetailsLoading] = React.useState(false);
+  const [details, setDetails] = React.useState<any | null>(null);
 
-  const router = useRouter();
+  // Manual location modal state
+  const [locationModalVisible, setLocationModalVisible] = React.useState(false);
+  const [manualLocation, setManualLocationInput] = React.useState("");
 
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchAllCategories() {
-      setLoading(true);
-      setError(null);
-      try {
-        let latitude: number, longitude: number;
-        if (currentCoords) {
-          latitude = currentCoords.latitude;
-          longitude = currentCoords.longitude;
-        } else {
-          const { status } = await Location.requestForegroundPermissionsAsync();
-          if (status !== "granted") {
-            setError("Location permission denied");
-            setLoading(false);
-            return;
-          }
-          const location = await Location.getCurrentPositionAsync({});
-          latitude = location.coords.latitude;
-          longitude = location.coords.longitude;
-        }
-        const radius = 1500;
-        const apiKey = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY as string;
-        let all: Place[] = [];
-        const selectedCats =
-          !interests || interests.length === 0
-            ? CATEGORIES
-            : CATEGORIES.filter((cat) => interests.includes(cat.type));
-        for (const cat of selectedCats) {
-          const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${latitude},${longitude}&radius=${radius}&type=${cat.type}&key=${apiKey}`;
-          const response = await axios.get(url);
-          if (
-            response.data.status === "OK" &&
-            response.data.results.length > 0
-          ) {
-            const places: Place[] = response.data.results
-              .filter((item: any) => item.types && item.types[0] === cat.type)
-              .slice(0, 3)
-              .map((item: any) => ({
-                place_id: item.place_id,
-                name: item.name,
-                vicinity: item.vicinity ?? "",
-                geometry: item.geometry,
-                photos: item.photos,
-                rating: item.rating,
-                user_ratings_total: item.user_ratings_total,
-                opening_hours: item.opening_hours,
-                types: item.types,
-                categoryLabel: cat.label,
-                categoryIcon: cat.icon,
-              }));
-            all = all.concat(places);
-          }
-        }
-        if (!cancelled) {
-          setAllPlaces(all);
-        }
-      } catch (err) {
-        if (!cancelled) setError("Failed to fetch places");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    fetchAllCategories();
-    return () => {
-      cancelled = true;
-    };
-  }, [interests, currentCoords]);
+  // Search state
+  const [search, setSearch] = React.useState("");
+  const filteredPlaces = allPlaces.filter((place) =>
+    place.name.toLowerCase().includes(search.toLowerCase())
+  );
 
-  // Location modal handlers
-  const openLocationModal = () => setShowLocationModal(true);
-  const closeLocationModal = () => setShowLocationModal(false);
-  const setLocation = () => {
-    const lat = parseFloat(manualLocation.latitude);
-    const lng = parseFloat(manualLocation.longitude);
-    if (!isNaN(lat) && !isNaN(lng)) {
-      setCurrentCoords({ latitude: lat, longitude: lng });
-      closeLocationModal();
-    }
-  };
+  // Main list of places (excluding favourites)
+  const nonFavPlaces = filteredPlaces.filter(
+    (item) => !favourites.some((fav) => fav.place_id === item.place_id)
+  );
 
-  // Details modal logic
+  // Handler to open details modal and fetch details
   const openDetails = async (placeId: string) => {
     setDetailsLoading(true);
     setDetailsModal(true);
@@ -206,144 +72,128 @@ export default function HomeScreen() {
         "formatted_phone_number",
         "opening_hours",
         "price_level",
+        "place_id",
       ].join(",");
       const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=${fields}&key=${apiKey}`;
-      const response = await axios.get(url);
-      setDetails(response.data.result);
+      const response = await fetch(url);
+      const data = await response.json();
+      setDetails(data.result);
     } catch {
       setDetails(null);
     } finally {
       setDetailsLoading(false);
     }
   };
+
   const closeDetails = () => {
     setDetailsModal(false);
     setDetails(null);
   };
 
-  // Horizontal Favourites Card UI — ALL STYLES replaced by Tailwind/NativeWind
-  const renderFavCard = useCallback(
-    ({ item }: { item: Place }) => {
-      let imageUrl = FALLBACK_IMAGE;
-      if (item.photos && item.photos.length > 0) {
-        imageUrl = getPhotoUrl(item.photos[0].photo_reference, 300);
-      }
-      return (
-        <TouchableOpacity
-          className="w-[150px] h-[112px] mr-3 rounded-lg bg-white shadow"
-          activeOpacity={0.85}
-          onPress={() => openDetails(item.place_id)}
-        >
-          <Image
-            source={{ uri: imageUrl }}
-            className="w-[150px] h-[64px] rounded-t-lg bg-gray-200"
-            resizeMode="cover"
-          />
-          <View className="absolute right-2 top-2 z-10">
-            <TouchableOpacity
-              onPress={() => removeFromFavourites(item.place_id)}
-              className="bg-black/50 rounded-full p-1.5"
-            >
-              <FontAwesome name="star" size={20} color="#FFD700" />
-            </TouchableOpacity>
-          </View>
-          <Text className="text-xs font-semibold mt-1 ml-2" numberOfLines={1}>
-            {item.name}
-          </Text>
-          <Text className="text-xs text-gray-600 ml-2" numberOfLines={1}>
-            {item.vicinity}
-          </Text>
-        </TouchableOpacity>
-      );
-    },
-    [favourites]
-  );
-
-  // Main list of places (excluding favourites)
-  const nonFavPlaces = allPlaces.filter(
-    (item) => !favourites.some((fav) => fav.place_id === item.place_id)
+  // Render Favourites Card (now opens details modal)
+  const renderFavCard = ({ item }: { item: any }) => (
+    <TouchableOpacity onPress={() => openDetails(item.place_id)}>
+      <View className="mr-4">
+        <Image
+          source={{
+            uri:
+              item.photos && item.photos.length > 0
+                ? getPhotoUrl(item.photos[0].photo_reference)
+                : FALLBACK_IMAGE,
+          }}
+          className="w-24 h-24 rounded-xl mb-2"
+          resizeMode="cover"
+        />
+        <Text className="font-semibold text-xs w-24" numberOfLines={1}>
+          {item.name}
+        </Text>
+      </View>
+    </TouchableOpacity>
   );
 
   return (
     <SafeAreaView className="flex-1 bg-white pt-6">
       <View className="flex-row items-center mt-6 mx-5 mb-0">
         <Text className="text-2xl font-bold flex-1">Hello, {username}</Text>
-        <TouchableOpacity onPress={openLocationModal}>
+        <TouchableOpacity onPress={() => setLocationModalVisible(true)}>
           <Ionicons name="location" size={26} color="#4285F4" />
         </TouchableOpacity>
       </View>
-      {/* Set Location Modal */}
-      <Modal visible={showLocationModal} animationType="slide" transparent>
-        <View className="flex-1 bg-black/25 justify-center items-center">
-          <View className="bg-white rounded-2xl px-6 py-7 w-80">
-            <Text className="font-bold text-lg mb-3">
-              Set Location Manually
-            </Text>
+
+      {/* Manual Location Modal */}
+      <Modal
+        visible={locationModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setLocationModalVisible(false)}
+      >
+        <View className="flex-1 justify-center items-center bg-black/60">
+          <View className="bg-white rounded-xl p-6 w-11/12">
+            <Text className="font-bold text-lg mb-2">Enter your location</Text>
             <TextInput
-              placeholder="Latitude"
-              keyboardType="numeric"
-              value={manualLocation.latitude}
-              onChangeText={(t) =>
-                setManualLocation({ ...manualLocation, latitude: t })
-              }
-              className="border border-gray-200 rounded-lg px-4 py-2 mb-2 text-base"
+              className="border border-gray-300 rounded-lg p-3 mb-4"
+              placeholder="Type your city or address"
+              value={manualLocation}
+              onChangeText={setManualLocationInput}
             />
-            <TextInput
-              placeholder="Longitude"
-              keyboardType="numeric"
-              value={manualLocation.longitude}
-              onChangeText={(t) =>
-                setManualLocation({ ...manualLocation, longitude: t })
-              }
-              className="border border-gray-200 rounded-lg px-4 py-2 mb-4 text-base"
-            />
-            <View className="flex-row">
+            <View className="flex-row justify-between">
               <TouchableOpacity
-                onPress={closeLocationModal}
-                className="flex-1 items-center bg-gray-200 py-3 rounded-lg mr-2"
+                className="bg-gray-300 rounded-lg p-3 flex-1 mr-2 items-center"
+                onPress={() => setLocationModalVisible(false)}
               >
-                <Text className="text-gray-800 font-semibold">Cancel</Text>
+                <Text className="text-black">Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={setLocation}
-                className="flex-1 items-center bg-blue-500 py-3 rounded-lg ml-2"
+                className="bg-blue-600 rounded-lg p-3 flex-1 ml-2 items-center"
+                onPress={() => {
+                  setManualLocation(manualLocation); // update context
+                  setLocationModalVisible(false);
+                }}
               >
-                <Text className="text-white font-semibold">Set</Text>
+                <Text className="text-white font-bold">Set Location</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-      {/* Search Bar */}
-      <TouchableOpacity
-        onPress={() => router.push("/explore")}
-        activeOpacity={0.8}
-        className="flex-row items-center bg-gray-100 rounded-lg mx-5 py-3 px-4 mt-3 mb-1"
-      >
-        <FontAwesome name="search" size={18} color="#999" className="mr-2" />
-        <Text className="text-gray-500">Search places, categories...</Text>
-      </TouchableOpacity>
+
       {/* Favourites Horizontal Scroll */}
       {favourites.length > 0 && (
-        <>
-          <Text className="mx-5 mt-4 mb-2 font-bold text-base">
-            Your Favourites
-          </Text>
-          <FlatList
-            data={favourites as Place[]}
-            keyExtractor={(item) => item.place_id}
-            renderItem={renderFavCard}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{
-              paddingLeft: 16,
-              paddingBottom: 0,
-              paddingRight: 8,
-            }}
-            className="max-h-[150px]"
-          />
-        </>
+        <View className="mx-4 mt-6 mb-3 rounded-2xl border border-blue-200 bg-blue-50 shadow-sm overflow-hidden">
+          <TouchableOpacity
+            onPress={() => setFavsCollapsed((prev) => !prev)}
+            activeOpacity={0.85}
+            className="flex-row items-center px-5 py-3 bg-blue-100"
+          >
+            <Text className="font-bold text-base flex-1 text-blue-900">
+              Your Favourites
+            </Text>
+            <FontAwesome
+              name={favsCollapsed ? "angle-down" : "angle-up"}
+              size={22}
+              color="#2563eb"
+            />
+          </TouchableOpacity>
+          {!favsCollapsed && (
+            <View className="py-3">
+              <FlatList
+                data={favourites}
+                keyExtractor={(item) => item.place_id}
+                renderItem={renderFavCard}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{
+                  paddingLeft: 12,
+                  paddingBottom: 2,
+                  paddingRight: 12,
+                }}
+                className="min-h-[120px]"
+              />
+            </View>
+          )}
+        </View>
       )}
+
       {/* Main List of Places */}
       <View className="flex-1">
         {loading ? (
@@ -431,82 +281,94 @@ export default function HomeScreen() {
           />
         )}
       </View>
+
       {/* Details Modal */}
       <Modal
         visible={detailsModal}
         animationType="slide"
         onRequestClose={closeDetails}
+        transparent={true}
       >
-        <SafeAreaView className="flex-1 bg-white">
-          {detailsLoading ? (
-            <ActivityIndicator size="large" className="mt-10" />
-          ) : !details ? (
-            <Text className="text-center mt-16">Place not found.</Text>
-          ) : (
-            <ScrollView>
-              {/* Photos Gallery */}
-              <ScrollView horizontal className="h-[220px]">
+        <View className="flex-1 justify-center items-center bg-black/60">
+          <View className="bg-white rounded-xl p-4 w-11/12 max-h-[80%]">
+            {detailsLoading ? (
+              <ActivityIndicator size="large" color="#000" />
+            ) : !details ? (
+              <Text>Place not found.</Text>
+            ) : (
+              <ScrollView>
                 {(details.photos && details.photos.length > 0
-                  ? details.photos
+                  ? details.photos.slice(0, 1)
                   : [{ photo_reference: null }]
                 ).map((photo: any, idx: number) => (
                   <Image
                     key={idx}
                     source={{
                       uri: photo.photo_reference
-                        ? getPhotoUrl(photo.photo_reference, 600)
+                        ? getPhotoUrl(photo.photo_reference)
                         : FALLBACK_IMAGE,
                     }}
-                    style={{
-                      width: windowWidth,
-                      height: 220,
-                      marginRight: 6,
-                    }}
+                    className="w-full h-40 rounded-lg mb-2"
+                    resizeMode="cover"
                   />
                 ))}
-              </ScrollView>
-              <View className="p-5">
-                <Text className="font-bold text-2xl mb-2">{details.name}</Text>
-                <Text className="text-gray-600 mb-1">
+                <Text className="font-bold text-lg mb-1">{details.name}</Text>
+                <Text className="text-gray-700 mb-1">
                   {details.formatted_address}
                 </Text>
                 {details.formatted_phone_number && (
-                  <Text className="text-gray-800 mb-2">
+                  <Text className="mb-1">
                     📞 {details.formatted_phone_number}
                   </Text>
                 )}
-                <Text className="text-gray-500 mb-1">
+                <Text className="mb-1">
                   {details.types
                     ?.map((t: string) => t.replace(/_/g, " "))
                     .join(", ")}
                 </Text>
-                <Text className="font-bold text-base mb-1">
+                <Text className="mb-1">
                   ⭐ {details.rating ?? "N/A"} (
                   {details.user_ratings_total ?? 0} ratings)
                 </Text>
                 {details.opening_hours && (
-                  <Text
-                    className={`mb-2 ${
-                      details.opening_hours.open_now
-                        ? "text-green-700"
-                        : "text-red-700"
-                    }`}
-                  >
+                  <Text className="mb-1">
                     {details.opening_hours.open_now ? "Open Now" : "Closed"}
                   </Text>
                 )}
                 {details.price_level && (
-                  <Text className="text-gray-500 mb-1">
+                  <Text className="mb-1">
                     {"$".repeat(details.price_level)}
                   </Text>
                 )}
+                {/* Add to Favourites Button */}
+                <TouchableOpacity
+                  onPress={() => {
+                    const isFav = favourites.some(
+                      (fav) => fav.place_id === details.place_id
+                    );
+                    isFav
+                      ? removeFromFavourites(details.place_id)
+                      : addToFavourites(details);
+                  }}
+                  className={`rounded-lg p-3 mt-2 mb-2 items-center ${
+                    favourites.some((fav) => fav.place_id === details.place_id)
+                      ? "bg-red-600"
+                      : "bg-blue-600"
+                  }`}
+                >
+                  <Text className="text-white font-bold">
+                    {favourites.some((fav) => fav.place_id === details.place_id)
+                      ? "Remove from Favourites"
+                      : "Add to Favourites"}
+                  </Text>
+                </TouchableOpacity>
+                {/* Website and Directions */}
                 {details.website && (
                   <TouchableOpacity
                     onPress={() => Linking.openURL(details.website)}
+                    className="bg-gray-200 rounded-lg p-2 mb-2 items-center"
                   >
-                    <Text className="text-blue-700 mb-1 underline">
-                      Website
-                    </Text>
+                    <Text className="text-blue-700">Website</Text>
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
@@ -519,41 +381,38 @@ export default function HomeScreen() {
                         : `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
                     Linking.openURL(url);
                   }}
-                  className="bg-blue-600 rounded-lg p-3 mt-6 mb-3 items-center"
+                  className="bg-green-600 rounded-lg p-2 mb-2 items-center"
                 >
-                  <Text className="text-white font-semibold">
-                    Get Directions
-                  </Text>
+                  <Text className="text-white">Get Directions</Text>
                 </TouchableOpacity>
+                {/* Reviews */}
                 {details.reviews && (
                   <>
-                    <Text className="font-bold mt-6">Reviews</Text>
+                    <Text className="font-bold mt-2 mb-1">Reviews</Text>
                     {details.reviews
                       .slice(0, 5)
                       .map((review: any, idx: number) => (
-                        <View
-                          key={idx}
-                          className="border-b border-gray-100 mb-3"
-                        >
-                          <Text className="font-bold mt-2">
+                        <View key={idx} className="mb-2">
+                          <Text className="font-semibold">
                             {review.author_name}
                           </Text>
                           <Text>{"★".repeat(Math.round(review.rating))}</Text>
-                          <Text className="text-gray-700">{review.text}</Text>
+                          <Text>{review.text}</Text>
                         </View>
                       ))}
                   </>
                 )}
+                {/* Close Button */}
                 <TouchableOpacity
                   onPress={closeDetails}
-                  className="mt-4 bg-gray-900 rounded-lg p-3 items-center"
+                  className="bg-gray-300 rounded-lg p-2 mt-2 items-center"
                 >
-                  <Text className="text-white">Close</Text>
+                  <Text className="text-black">Close</Text>
                 </TouchableOpacity>
-              </View>
-            </ScrollView>
-          )}
-        </SafeAreaView>
+              </ScrollView>
+            )}
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );

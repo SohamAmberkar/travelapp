@@ -1,23 +1,25 @@
-import axios from "axios";
-import * as Location from "expo-location";
 import React, {
   createContext,
-  ReactNode,
   useContext,
   useEffect,
   useState,
+  ReactNode,
 } from "react";
+import * as Location from "expo-location";
+import axios from "axios";
 
-export type Place = {
+// Type definitions
+type Place = {
   place_id: string;
   name: string;
-  vicinity: string;
-  geometry: { location: { lat: number; lng: number } };
   photos?: { photo_reference: string }[];
+  vicinity?: string;
   rating?: number;
   user_ratings_total?: number;
-  opening_hours?: { open_now?: boolean };
+  opening_hours?: { open_now: boolean };
   types?: string[];
+  geometry?: { location: { lat: number; lng: number } };
+  [key: string]: any;
 };
 
 type PlacesContextType = {
@@ -27,9 +29,12 @@ type PlacesContextType = {
   selectedType: string;
   setSelectedType: (type: string) => void;
   refresh: () => void;
+  setManualLocation: (loc: string | null) => void;
+  manualLocation: string | null;
+  coords: { lat: number; lng: number } | null;
 };
 
-const DEFAULT_TYPE = "gym";
+const DEFAULT_TYPE = "cafe";
 
 const PlacesContext = createContext<PlacesContextType | undefined>(undefined);
 
@@ -37,30 +42,79 @@ export function PlacesProvider({ children }: { children: ReactNode }) {
   const [places, setPlaces] = useState<Place[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedType, setSelectedType] = useState<string>(DEFAULT_TYPE);
+  const [selectedType, setSelectedType] = useState(DEFAULT_TYPE);
+  const [manualLocation, setManualLocation] = useState<string | null>(null);
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
+    null
+  );
+
+  // Fetch coordinates based on manualLocation or device
+  const fetchCoords = async () => {
+    if (manualLocation) {
+      // Geocode the manual location
+      const apiKey = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY as string;
+      const geoUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
+        manualLocation
+      )}&key=${apiKey}`;
+      const geoResp = await axios.get(geoUrl);
+      if (
+        geoResp.data.status === "OK" &&
+        geoResp.data.results &&
+        geoResp.data.results[0]
+      ) {
+        const { lat, lng } = geoResp.data.results[0].geometry.location;
+        setCoords({ lat, lng });
+        return { lat, lng };
+      } else {
+        setError("Could not find location");
+        setCoords(null);
+        return null;
+      }
+    } else {
+      // Device location
+      try {
+        const servicesEnabled = await Location.hasServicesEnabledAsync();
+        if (!servicesEnabled) {
+          setError("Location services are disabled.");
+          setCoords(null);
+          return null;
+        }
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") {
+          setError("Location permission denied");
+          setCoords(null);
+          return null;
+        }
+        const location = await Location.getCurrentPositionAsync({});
+        setCoords({
+          lat: location.coords.latitude,
+          lng: location.coords.longitude,
+        });
+        return {
+          lat: location.coords.latitude,
+          lng: location.coords.longitude,
+        };
+      } catch (err: any) {
+        setError("Could not get device location");
+        setCoords(null);
+        return null;
+      }
+    }
+  };
 
   const fetchPlaces = async (type: string = selectedType) => {
     setLoading(true);
     setError(null);
     try {
-      const servicesEnabled = await Location.hasServicesEnabledAsync();
-      if (!servicesEnabled) {
-        setError("Location services are disabled.");
+      const coord = await fetchCoords();
+      if (!coord) {
+        setPlaces([]);
         setLoading(false);
         return;
       }
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        setError("Location permission denied");
-        setLoading(false);
-        return;
-      }
-      const location = await Location.getCurrentPositionAsync({});
-      const latitude = location.coords.latitude;
-      const longitude = location.coords.longitude;
       const radius = 1500;
       const apiKey = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY as string;
-      const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${latitude},${longitude}&radius=${radius}&type=${type}&key=${apiKey}`;
+      const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${coord.lat},${coord.lng}&radius=${radius}&type=${type}&key=${apiKey}`;
       const response = await axios.get(url);
       if (response.data.status !== "OK") {
         setError(`API error: ${response.data.status}`);
@@ -76,10 +130,11 @@ export function PlacesProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Fetch places when type or location changes
   useEffect(() => {
     fetchPlaces(selectedType);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedType]);
+  }, [selectedType, manualLocation]);
 
   return (
     <PlacesContext.Provider
@@ -90,6 +145,9 @@ export function PlacesProvider({ children }: { children: ReactNode }) {
         selectedType,
         setSelectedType,
         refresh: () => fetchPlaces(selectedType),
+        setManualLocation,
+        manualLocation,
+        coords,
       }}
     >
       {children}
@@ -97,9 +155,9 @@ export function PlacesProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// Custom hook for context access
 export function usePlaces() {
-  const context = useContext(PlacesContext);
-  if (!context)
-    throw new Error("usePlaces must be used within a PlacesProvider");
-  return context;
+  const ctx = useContext(PlacesContext);
+  if (!ctx) throw new Error("usePlaces must be used within a PlacesProvider");
+  return ctx;
 }
