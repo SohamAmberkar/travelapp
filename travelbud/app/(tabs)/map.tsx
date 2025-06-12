@@ -17,7 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 const screenHeight = Dimensions.get("window").height;
 
 export default function MapScreen() {
-  const { places, loading, error, coords } = usePlaces();
+  const { places, loading, error, coords, manualLocation } = usePlaces();
   const [region, setRegion] = useState<Region | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -48,13 +48,28 @@ export default function MapScreen() {
   };
 
   // Open directions in Google/Apple Maps
-  const openDirections = (lat: number, lng: number, name: string) => {
-    const label = encodeURIComponent(name);
+  const openDirections = (
+    destLat: number,
+    destLng: number,
+    destName: string
+  ) => {
+    // Use coords (manual or device) as the origin if available
     let url = "";
-    if (Platform.OS === "ios") {
-      url = `maps://app?daddr=${lat},${lng}&dirflg=d`;
+    if (coords) {
+      const origin = `${coords.lat},${coords.lng}`;
+      const destination = `${destLat},${destLng}`;
+      if (Platform.OS === "ios") {
+        url = `http://maps.apple.com/?saddr=${origin}&daddr=${destination}`;
+      } else {
+        url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
+      }
     } else {
-      url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+      // fallback: just destination
+      if (Platform.OS === "ios") {
+        url = `maps://app?daddr=${destLat},${destLng}&dirflg=d`;
+      } else {
+        url = `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}&travelmode=driving`;
+      }
     }
     Linking.openURL(url);
   };
@@ -85,36 +100,35 @@ export default function MapScreen() {
         showsUserLocation
         showsMyLocationButton
       >
-        {places.map((place, idx) => (
-          <Marker
-            key={place.place_id}
-            coordinate={{
-              // @ts-ignore
-              latitude: place.geometry.location.lat,
-              // @ts-ignore
-              longitude: place.geometry.location.lng,
-            }}
-            title={place.name}
-            description={place.vicinity}
-            onPress={() => setSelected(idx)}
-          />
-        ))}
+        {places.map(
+          (place, idx) =>
+            place.geometry?.location && (
+              <Marker
+                key={place.place_id}
+                coordinate={{
+                  latitude: place.geometry.location.lat,
+                  longitude: place.geometry.location.lng,
+                }}
+                title={place.name}
+                description={place.vicinity}
+                onPress={() => setSelected(idx)}
+              />
+            )
+        )}
       </MapView>
 
       {/* Floating Route Button */}
-      {selected !== null && places[selected] && (
+      {selected !== null && places[selected]?.geometry?.location && (
         <TouchableOpacity
           className={`absolute right-6 ${
             collapsed ? "bottom-20" : "bottom-4"
-          } bg-blue-600 rounded-full pl-1 py-4   flex-row items-center shadow-xs z-10 max-h-13 max-w-14 min-w-13`}
+          } bg-blue-600 rounded-full pl-1 py-4 flex-row items-center shadow-xs z-10 max-h-13 max-w-14 min-w-13`}
           activeOpacity={0.85}
           onPress={() =>
             openDirections(
-              // @ts-ignore
-              places[selected].geometry.location.lat,
-              // @ts-ignore
-              places[selected].geometry.location.lng,
-              places[selected].name
+              places[selected]!.geometry!.location.lat,
+              places[selected]!.geometry!.location.lng,
+              places[selected]!.name
             )
           }
         >
@@ -157,78 +171,79 @@ export default function MapScreen() {
         className="bg-white rounded-t-3xl shadow-lg"
       >
         <ScrollView>
-          {places.map((place, idx) => (
-            <TouchableOpacity
-              key={place.place_id}
-              className={[
-                "flex-row items-center mb-3 rounded-2xl px-4 py-3 mx-4",
-                selected === idx
-                  ? "bg-blue-100 border-2 border-blue-400"
-                  : "bg-slate-50 border border-slate-200",
-              ].join(" ")}
-              onPress={() => {
-                setSelected(idx);
-                setRegion({
-                  // @ts-ignore
-                  latitude: place.geometry.location.lat,
-                  // @ts-ignore
-                  longitude: place.geometry.location.lng,
-                  latitudeDelta: 0.02,
-                  longitudeDelta: 0.02,
-                });
-              }}
-              activeOpacity={0.9}
-            >
-              <View
-                className={[
-                  "w-10 h-10 rounded-full mr-3 items-center justify-center",
-                  selected === idx ? "bg-blue-200" : "bg-slate-200",
-                ].join(" ")}
-              >
-                <Text className="text-xl">📍</Text>
-              </View>
-              <View className="flex-1">
-                <Text
-                  className="font-bold text-base text-slate-900"
-                  numberOfLines={1}
+          {places.map(
+            (place, idx) =>
+              place.geometry?.location && (
+                <TouchableOpacity
+                  key={place.place_id}
+                  className={[
+                    "flex-row items-center mb-3 rounded-2xl px-4 py-3 mx-4",
+                    selected === idx
+                      ? "bg-blue-100 border-2 border-blue-400"
+                      : "bg-slate-50 border border-slate-200",
+                  ].join(" ")}
+                  onPress={() => {
+                    setSelected(idx);
+                    setRegion({
+                      latitude: place.geometry!.location.lat,
+                      longitude: place.geometry!.location.lng,
+                      latitudeDelta: 0.02,
+                      longitudeDelta: 0.02,
+                    });
+                  }}
+                  activeOpacity={0.9}
                 >
-                  {place.name}
-                </Text>
-                <Text
-                  className="text-xs text-slate-500 mt-0.5"
-                  numberOfLines={2}
-                >
-                  {place.vicinity}
-                </Text>
-              </View>
-              <TouchableOpacity
-                className="flex-row items-center bg-blue-600 rounded-xl px-3 py-2 ml-2 shadow"
-                onPress={() =>
-                  openDirections(
-                    // @ts-ignore
-                    place.geometry.location.lat,
-                    // @ts-ignore
-                    place.geometry.location.lng,
-                    place.name
-                  )
-                }
-                activeOpacity={0.85}
-              >
-                <Ionicons
-                  name="navigate"
-                  size={16}
-                  color="#fff"
-                  style={{ marginRight: 4 }}
-                />
-                <Text className="text-white font-semibold text-xs">Route</Text>
-              </TouchableOpacity>
-            </TouchableOpacity>
-          ))}
+                  <View
+                    className={[
+                      "w-10 h-10 rounded-full mr-3 items-center justify-center",
+                      selected === idx ? "bg-blue-200" : "bg-slate-200",
+                    ].join(" ")}
+                  >
+                    <Text className="text-xl">📍</Text>
+                  </View>
+                  <View className="flex-1">
+                    <Text
+                      className="font-bold text-base text-slate-900"
+                      numberOfLines={1}
+                    >
+                      {place.name}
+                    </Text>
+                    <Text
+                      className="text-xs text-slate-500 mt-0.5"
+                      numberOfLines={2}
+                    >
+                      {place.vicinity}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    className="flex-row items-center bg-blue-600 rounded-xl px-3 py-2 ml-2 shadow"
+                    onPress={() =>
+                      openDirections(
+                        place.geometry!.location.lat,
+                        place.geometry!.location.lng,
+                        place.name
+                      )
+                    }
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons
+                      name="navigate"
+                      size={16}
+                      color="#fff"
+                      style={{ marginRight: 4 }}
+                    />
+                    <Text className="text-white font-semibold text-xs">
+                      Route
+                    </Text>
+                  </TouchableOpacity>
+                </TouchableOpacity>
+              )
+          )}
         </ScrollView>
       </Animated.View>
 
       {/* Collapsible details for selected marker (as before) */}
-      {selected !== null && places[selected] && (
+      {selected !== null && places[selected]?.geometry?.location && (
         <View className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-lg p-4">
           <TouchableOpacity
             className="absolute top-2 right-4 z-10"
