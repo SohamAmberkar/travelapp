@@ -141,18 +141,7 @@ export default function ProfileScreen() {
                 marginVertical: 18,
                 marginHorizontal: 12,
               }}
-            >
-              <Text
-                style={{
-                  flex: 1,
-                  fontWeight: "600",
-                  color: darkMode ? "#ccc" : "#222",
-                }}
-              >
-                Dark Mode
-              </Text>
-              <Switch value={darkMode} onValueChange={setDarkMode} />
-            </View>
+            ></View>
 
             <Text
               style={[

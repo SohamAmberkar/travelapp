@@ -4,6 +4,7 @@ import React, {
   useEffect,
   useState,
   ReactNode,
+  useCallback,
 } from "react";
 import * as Location from "expo-location";
 import axios from "axios";
@@ -32,6 +33,8 @@ type PlacesContextType = {
   setManualLocation: (loc: string | null) => void;
   manualLocation: string | null;
   coords: { lat: number; lng: number } | null;
+  homePlaces: Place[];
+  fetchPlacesForTypes: (types: string[]) => Promise<void>;
 };
 
 const DEFAULT_TYPE = "cafe";
@@ -40,6 +43,7 @@ const PlacesContext = createContext<PlacesContextType | undefined>(undefined);
 
 export function PlacesProvider({ children }: { children: ReactNode }) {
   const [places, setPlaces] = useState<Place[]>([]);
+  const [homePlaces, setHomePlaces] = useState<Place[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState(DEFAULT_TYPE);
@@ -49,9 +53,8 @@ export function PlacesProvider({ children }: { children: ReactNode }) {
   );
 
   // Fetch coordinates based on manualLocation or device
-  const fetchCoords = async () => {
+  const fetchCoords = useCallback(async () => {
     if (manualLocation) {
-      // Geocode the manual location
       const apiKey = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY as string;
       const geoUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
         manualLocation
@@ -71,7 +74,6 @@ export function PlacesProvider({ children }: { children: ReactNode }) {
         return null;
       }
     } else {
-      // Device location
       try {
         const servicesEnabled = await Location.hasServicesEnabledAsync();
         if (!servicesEnabled) {
@@ -100,41 +102,85 @@ export function PlacesProvider({ children }: { children: ReactNode }) {
         return null;
       }
     }
-  };
+  }, [manualLocation]);
 
-  const fetchPlaces = async (type: string = selectedType) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const coord = await fetchCoords();
-      if (!coord) {
+  // Fetch places for Explore (single type)
+  const fetchPlaces = useCallback(
+    async (type: string = selectedType) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const coord = await fetchCoords();
+        if (!coord) {
+          setPlaces([]);
+          setLoading(false);
+          return;
+        }
+        const radius = 1500;
+        const apiKey = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY as string;
+        const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${coord.lat},${coord.lng}&radius=${radius}&type=${type}&key=${apiKey}`;
+        const response = await axios.get(url);
+        if (response.data.status !== "OK") {
+          setError(`API error: ${response.data.status}`);
+          setPlaces([]);
+        } else {
+          setPlaces(response.data.results);
+        }
+      } catch (err: any) {
+        setError(err.message || "Failed to fetch places");
         setPlaces([]);
+      } finally {
         setLoading(false);
-        return;
       }
-      const radius = 1500;
-      const apiKey = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY as string;
-      const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${coord.lat},${coord.lng}&radius=${radius}&type=${type}&key=${apiKey}`;
-      const response = await axios.get(url);
-      if (response.data.status !== "OK") {
-        setError(`API error: ${response.data.status}`);
-        setPlaces([]);
-      } else {
-        setPlaces(response.data.results);
-      }
-    } catch (err: any) {
-      setError(err.message || "Failed to fetch places");
-      setPlaces([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+    [fetchCoords, selectedType]
+  );
 
-  // Fetch places when type or location changes
+  // --- Fetch places for multiple types (for Home) ---
+  const fetchPlacesForTypes = useCallback(
+    async (types: string[]) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const coord = await fetchCoords();
+        if (!coord) {
+          setHomePlaces([]);
+          setLoading(false);
+          return;
+        }
+        const radius = 1500;
+        const apiKey = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY as string;
+        let allResults: Place[] = [];
+        for (const type of types) {
+          const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${coord.lat},${coord.lng}&radius=${radius}&type=${type}&key=${apiKey}`;
+          const response = await axios.get(url);
+          if (
+            response.data.status === "OK" &&
+            Array.isArray(response.data.results)
+          ) {
+            for (const place of response.data.results) {
+              if (!allResults.some((p) => p.place_id === place.place_id)) {
+                allResults.push(place);
+              }
+            }
+          }
+        }
+        setHomePlaces(allResults);
+      } catch (err: any) {
+        setError(err.message || "Failed to fetch places for interests");
+        setHomePlaces([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [fetchCoords]
+  );
+
+  // Fetch places when type or location changes (Explore)
   useEffect(() => {
     fetchPlaces(selectedType);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedType, manualLocation]);
+  }, [selectedType, manualLocation, fetchPlaces]);
 
   return (
     <PlacesContext.Provider
@@ -148,6 +194,8 @@ export function PlacesProvider({ children }: { children: ReactNode }) {
         setManualLocation,
         manualLocation,
         coords,
+        homePlaces,
+        fetchPlacesForTypes,
       }}
     >
       {children}
@@ -155,7 +203,6 @@ export function PlacesProvider({ children }: { children: ReactNode }) {
   );
 }
 
-// Custom hook for context access
 export function usePlaces() {
   const ctx = useContext(PlacesContext);
   if (!ctx) throw new Error("usePlaces must be used within a PlacesProvider");

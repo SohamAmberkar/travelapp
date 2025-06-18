@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -16,8 +16,7 @@ import {
 import { Ionicons, FontAwesome } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePlaces } from "../../context/places-context";
-import { useUser } from "../../context/user-context"; // Adjust path as needed
-import { PlacesProvider } from "../../context/places-context";
+import { useUser } from "../../context/user-context";
 
 const FALLBACK_IMAGE =
   "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/No_image_available.svg/480px-No_image_available.svg.png";
@@ -25,40 +24,66 @@ const FALLBACK_IMAGE =
 const getPhotoUrl = (photoReference: string, maxwidth = 400) =>
   `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${maxwidth}&photoreference=${photoReference}&key=${process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY}`;
 
+type PlacePhoto = { photo_reference: string };
+type PlaceReview = { author_name: string; rating: number; text: string };
+type PlaceDetails = {
+  name: string;
+  formatted_address?: string;
+  geometry?: { location: { lat: number; lng: number } };
+  photos?: PlacePhoto[];
+  rating?: number;
+  user_ratings_total?: number;
+  types?: string[];
+  reviews?: PlaceReview[];
+  website?: string;
+  formatted_phone_number?: string;
+  opening_hours?: { open_now?: boolean };
+  price_level?: number;
+  place_id: string;
+};
+
 export default function HomeScreen() {
-  const [favsCollapsed, setFavsCollapsed] = React.useState(false);
-
+  const [favsCollapsed, setFavsCollapsed] = useState(false);
   const insets = useSafeAreaInsets();
-  const { places: allPlaces, loading, error, setManualLocation } = usePlaces();
-  const { favourites, addToFavourites, removeFromFavourites, username } =
-    useUser();
+  const { homePlaces, fetchPlacesForTypes, loading, error, setManualLocation } =
+    usePlaces();
+  const {
+    favourites,
+    addToFavourites,
+    removeFromFavourites,
+    username,
+    interests,
+  } = useUser();
 
-  // Details modal state
-  const [detailsModal, setDetailsModal] = React.useState(false);
-  const [detailsLoading, setDetailsLoading] = React.useState(false);
-  const [details, setDetails] = React.useState<any | null>(null);
+  const [detailsModal, setDetailsModal] = useState(false);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [details, setDetails] = useState<PlaceDetails | null>(null);
 
-  // Manual location modal state
-  const [locationModalVisible, setLocationModalVisible] = React.useState(false);
-  const [manualLocation, setManualLocationInput] = React.useState("");
+  const [locationModalVisible, setLocationModalVisible] = useState(false);
+  const [manualLocation, setManualLocationInput] = useState("");
+  const [search, setSearch] = useState("");
 
-  // Search state
-  const [search, setSearch] = React.useState("");
-  const filteredPlaces = allPlaces.filter((place) =>
+  // Fetch all places for user interests on mount and when interests change
+  useEffect(() => {
+    if (interests && interests.length > 0) {
+      fetchPlacesForTypes(interests);
+    }
+  }, [interests, fetchPlacesForTypes]);
+
+  // Filtering logic: homePlaces is already filtered by interests
+  const interestFilteredPlaces = homePlaces;
+  const filteredPlaces = interestFilteredPlaces.filter((place) =>
     place.name.toLowerCase().includes(search.toLowerCase())
   );
-
-  // Main list of places (excluding favourites)
   const nonFavPlaces = filteredPlaces.filter(
     (item) => !favourites.some((fav) => fav.place_id === item.place_id)
   );
 
-  // Handler to open details modal and fetch details
   const openDetails = async (placeId: string) => {
     setDetailsLoading(true);
     setDetailsModal(true);
     try {
-      const apiKey = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY as string;
+      const apiKey = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY;
       const fields = [
         "name",
         "formatted_address",
@@ -77,7 +102,7 @@ export default function HomeScreen() {
       const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=${fields}&key=${apiKey}`;
       const response = await fetch(url);
       const data = await response.json();
-      setDetails(data.result);
+      setDetails(data.result as PlaceDetails);
     } catch {
       setDetails(null);
     } finally {
@@ -90,7 +115,6 @@ export default function HomeScreen() {
     setDetails(null);
   };
 
-  // Render Favourites Card (now opens details modal)
   const renderFavCard = ({ item }: { item: any }) => (
     <TouchableOpacity onPress={() => openDetails(item.place_id)}>
       <View className="mr-4">
@@ -146,7 +170,7 @@ export default function HomeScreen() {
               <TouchableOpacity
                 className="bg-blue-600 rounded-lg p-3 flex-1 ml-2 items-center"
                 onPress={() => {
-                  setManualLocation(manualLocation); // update context
+                  setManualLocation(manualLocation);
                   setLocationModalVisible(false);
                 }}
               >
@@ -300,7 +324,7 @@ export default function HomeScreen() {
                 {(details.photos && details.photos.length > 0
                   ? details.photos.slice(0, 1)
                   : [{ photo_reference: null }]
-                ).map((photo: any, idx: number) => (
+                ).map((photo, idx) => (
                   <Image
                     key={idx}
                     source={{
@@ -322,9 +346,7 @@ export default function HomeScreen() {
                   </Text>
                 )}
                 <Text className="mb-1">
-                  {details.types
-                    ?.map((t: string) => t.replace(/_/g, " "))
-                    .join(", ")}
+                  {details.types?.map((t) => t.replace(/_/g, " ")).join(", ")}
                 </Text>
                 <Text className="mb-1">
                   ⭐ {details.rating ?? "N/A"} (
@@ -343,6 +365,7 @@ export default function HomeScreen() {
                 {/* Add to Favourites Button */}
                 <TouchableOpacity
                   onPress={() => {
+                    if (!details?.place_id) return;
                     const isFav = favourites.some(
                       (fav) => fav.place_id === details.place_id
                     );
@@ -365,7 +388,7 @@ export default function HomeScreen() {
                 {/* Website and Directions */}
                 {details.website && (
                   <TouchableOpacity
-                    onPress={() => Linking.openURL(details.website)}
+                    onPress={() => Linking.openURL(details.website!)}
                     className="bg-gray-200 rounded-lg p-2 mb-2 items-center"
                   >
                     <Text className="text-blue-700">Website</Text>
@@ -373,13 +396,15 @@ export default function HomeScreen() {
                 )}
                 <TouchableOpacity
                   onPress={() => {
-                    const lat = details.geometry.location.lat;
-                    const lng = details.geometry.location.lng;
-                    const url =
-                      Platform.OS === "ios"
-                        ? `maps://app?daddr=${lat},${lng}&dirflg=d`
-                        : `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
-                    Linking.openURL(url);
+                    const lat = details.geometry?.location.lat;
+                    const lng = details.geometry?.location.lng;
+                    if (lat && lng) {
+                      const url =
+                        Platform.OS === "ios"
+                          ? `maps://app?daddr=${lat},${lng}&dirflg=d`
+                          : `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+                      Linking.openURL(url);
+                    }
                   }}
                   className="bg-green-600 rounded-lg p-2 mb-2 items-center"
                 >
@@ -389,17 +414,15 @@ export default function HomeScreen() {
                 {details.reviews && (
                   <>
                     <Text className="font-bold mt-2 mb-1">Reviews</Text>
-                    {details.reviews
-                      .slice(0, 5)
-                      .map((review: any, idx: number) => (
-                        <View key={idx} className="mb-2">
-                          <Text className="font-semibold">
-                            {review.author_name}
-                          </Text>
-                          <Text>{"★".repeat(Math.round(review.rating))}</Text>
-                          <Text>{review.text}</Text>
-                        </View>
-                      ))}
+                    {details.reviews.slice(0, 5).map((review, idx) => (
+                      <View key={idx} className="mb-2">
+                        <Text className="font-semibold">
+                          {review.author_name}
+                        </Text>
+                        <Text>{"★".repeat(Math.round(review.rating))}</Text>
+                        <Text>{review.text}</Text>
+                      </View>
+                    ))}
                   </>
                 )}
                 {/* Close Button */}
