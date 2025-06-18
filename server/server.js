@@ -15,7 +15,8 @@ const userSchema = new mongoose.Schema({
   email: { type: String, unique: true },
   password: String,
   preferences: { type: [String], default: [] },
-  favorites: { type: [mongoose.Schema.Types.Mixed], default: [] }
+  favorites: { type: [mongoose.Schema.Types.Mixed], default: [] },
+   profilePic: { type: String, default: "" }
 });
 
 const User = mongoose.model("User", userSchema);
@@ -84,7 +85,8 @@ app.get("/profile", authenticate, (req, res) => {
     username: req.user.username,
     email: req.user.email,
     preferences: req.user.preferences,
-    favourites: req.user.favorites // << always return as 'favourites'
+    favourites: req.user.favorites, // << always return as 'favourites'
+     profilePic: req.user.profilePic
   });
 });
 
@@ -98,6 +100,28 @@ app.patch("/preferences", authenticate, async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
+// PATCH /profile
+// PATCH /profile
+app.patch("/profile", authenticate, async (req, res) => {
+  try {
+    if (req.body.username) req.user.username = req.body.username;
+    if (req.body.profilePic) req.user.profilePic = req.body.profilePic;
+    if (req.body.interests) req.user.preferences = req.body.interests; // <-- Map interests to preferences
+    await req.user.save();
+    res.json({
+      username: req.user.username,
+      profilePic: req.user.profilePic,
+      preferences: req.user.preferences,
+      email: req.user.email,
+      favourites: req.user.favorites,
+    });
+  } catch {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+
 
 // -------------- GET FAVOURITES -------------
 app.get("/favourites", authenticate, (req, res) => {

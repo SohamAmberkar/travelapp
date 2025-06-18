@@ -10,30 +10,30 @@ import { useAuth } from "../context/auth-context";
 
 type UserContextType = {
   username: string;
-  setUsername: (name: string) => void;
+  setUsername: (name: string) => Promise<void>;
   profilePic: string;
-  setProfilePic: (url: string) => void;
+  setProfilePic: (url: string) => Promise<void>;
   interests: string[];
-  setInterests: (interests: string[]) => void;
+  setInterests: (interests: string[]) => Promise<void>;
   darkMode: boolean;
   setDarkMode: (val: boolean) => void;
   favourites: Place[];
-  addToFavourites: (place: Place) => void;
-  removeFromFavourites: (place_id: string) => void;
+  addToFavourites: (place: Place) => Promise<void>;
+  removeFromFavourites: (place_id: string) => Promise<void>;
 };
 
 const DEFAULT_USER: UserContextType = {
   username: "",
-  setUsername: () => {},
+  setUsername: async () => {},
   profilePic: "",
-  setProfilePic: () => {},
+  setProfilePic: async () => {},
   interests: [],
-  setInterests: () => {},
+  setInterests: async () => {},
   darkMode: false,
   setDarkMode: () => {},
   favourites: [],
-  addToFavourites: () => {},
-  removeFromFavourites: () => {},
+  addToFavourites: async () => {},
+  removeFromFavourites: async () => {},
 };
 
 const UserContext = createContext<UserContextType>(DEFAULT_USER);
@@ -71,19 +71,41 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
     }
   }, [user]);
 
-  const setUsername = (name: string) => {
-    setUsernameState(name);
-    updateProfile({ username: name });
+  // --- UPDATED: Async, backend-first, revert on error ---
+  const setUsername = async (name: string) => {
+    const prev = username;
+    setUsernameState(name); // Optimistic update
+    try {
+      await updateProfile({ username: name });
+    } catch (err) {
+      setUsernameState(prev); // Revert on error
+      console.error("Failed to update username:", err);
+      throw err;
+    }
   };
 
-  const setProfilePic = (url: string) => {
-    setProfilePicState(url);
-    updateProfile({ profilePic: url });
+  const setProfilePic = async (url: string) => {
+    const prev = profilePic;
+    setProfilePicState(url); // Optimistic update
+    try {
+      await updateProfile({ profilePic: url });
+    } catch (err) {
+      setProfilePicState(prev); // Revert on error
+      console.error("Failed to update profile pic:", err);
+      throw err;
+    }
   };
 
-  const setInterests = (ints: string[]) => {
-    setInterestsState(ints);
-    updateProfile({ interests: ints });
+  const setInterests = async (ints: string[]) => {
+    const prev = interests;
+    setInterestsState(ints); // Optimistic update
+    try {
+      await updateProfile({ interests: ints });
+    } catch (err) {
+      setInterestsState(prev); // Revert on error
+      console.error("Failed to update interests:", err);
+      throw err;
+    }
   };
 
   const setDarkMode = (val: boolean) => {
@@ -91,7 +113,6 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const addToFavourites = async (place: Place) => {
-    //console.log(place);
     await addFavourite(place);
     setFavourites((prev) =>
       prev.find((fav) => fav.place_id === place.place_id)

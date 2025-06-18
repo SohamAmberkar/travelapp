@@ -9,10 +9,12 @@ import {
   TextInput,
   StyleSheet,
   SafeAreaView,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useUser } from "@/context/user-context";
 import { useAuth } from "@/context/auth-context";
+import * as ImagePicker from "expo-image-picker";
 
 const INTERESTS = [
   { label: "Gyms", type: "gym" },
@@ -27,6 +29,7 @@ export default function ProfileScreen() {
     username,
     setUsername,
     profilePic,
+    setProfilePic,
     interests,
     setInterests,
     favourites,
@@ -44,7 +47,11 @@ export default function ProfileScreen() {
   }, [username]);
 
   const handleSaveName = () => {
-    setUsername(nameInput);
+    if (nameInput.trim().length === 0) {
+      Alert.alert("Name cannot be empty");
+      return;
+    }
+    setUsername(nameInput); // This should update backend via context
     setEditName(false);
   };
 
@@ -52,7 +59,36 @@ export default function ProfileScreen() {
     const newInterests = interests.includes(type)
       ? interests.filter((i) => i !== type)
       : [...interests, type];
-    setInterests(newInterests);
+    setInterests(newInterests); // This should update backend via context
+  };
+
+  // --- Profile Photo Selection Logic ---
+  const pickImageFromLibrary = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets && result.assets[0].uri) {
+      setProfilePic(result.assets[0].uri); // This should update backend via context
+    }
+  };
+
+  const takePhotoWithCamera = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (permission.status !== "granted") {
+      Alert.alert("Camera permission is required!");
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets && result.assets[0].uri) {
+      setProfilePic(result.assets[0].uri); // This should update backend via context
+    }
   };
 
   return (
@@ -65,11 +101,32 @@ export default function ProfileScreen() {
         contentContainerStyle={{ padding: 20 }}
         ListHeaderComponent={
           <>
-            <View style={{ alignItems: "center", marginBottom: 16 }}>
-              <Image
-                source={{ uri: profilePic }}
-                style={{ width: 80, height: 80, borderRadius: 40 }}
-              />
+            <View
+              style={{ alignItems: "center", marginBottom: 16, marginTop: 20 }}
+            >
+              <TouchableOpacity
+                onPress={pickImageFromLibrary}
+                onLongPress={takePhotoWithCamera}
+                style={{ alignItems: "center" }}
+              >
+                <Image
+                  source={
+                    profilePic
+                      ? { uri: profilePic }
+                      : require("@/assets/images/default-profile.png")
+                  }
+                  style={{
+                    paddingTop: 40,
+                    marginTop: 30,
+                    width: 80,
+                    height: 80,
+                    borderRadius: 40,
+                  }}
+                />
+                <Text style={{ color: "#888", fontSize: 12, marginTop: 4 }}>
+                  Tap to choose, long-press to take photo
+                </Text>
+              </TouchableOpacity>
               {!editName ? (
                 <TouchableOpacity onPress={() => setEditName(true)}>
                   <Text

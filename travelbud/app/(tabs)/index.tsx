@@ -67,11 +67,22 @@ export default function HomeScreen() {
   useEffect(() => {
     if (interests && interests.length > 0) {
       fetchPlacesForTypes(interests);
+    } else {
+      const fallbackTypes = [
+        "gym",
+        "cafe",
+        "coworking_space", // make sure your backend/Places API supports this
+        "park",
+        "store",
+      ];
+      fetchPlacesForTypes(fallbackTypes);
     }
   }, [interests, fetchPlacesForTypes]);
 
   // Filtering logic: homePlaces is already filtered by interests
-  const interestFilteredPlaces = homePlaces;
+  const interestFilteredPlaces =
+    interests && interests.length > 0 ? homePlaces : homePlaces; // unchanged here for fallback
+
   const filteredPlaces = interestFilteredPlaces.filter((place) =>
     place.name.toLowerCase().includes(search.toLowerCase())
   );
